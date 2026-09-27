@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-MODEL_ID="${MODEL_ID:-Qwen/Qwen2-1.5B-Instruct}"
+MODEL_ID="${MODEL_ID:-Qwen/Qwen3.5-0.8B-Instruct}"
 GPU_UTIL="${GPU_UTIL:-0.85}"
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-2048}"
 : "${JWT_SECRET:?JWT_SECRET must be set (e.g. -e JWT_SECRET=$(openssl rand -hex 32))}"
