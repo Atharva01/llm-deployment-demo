@@ -47,7 +47,8 @@ llm-deployment-demo/
 ├── entrypoint.sh           # Starts vLLM, auth service, Streamlit, then nginx
 ├── Dockerfile              # CUDA + PyTorch + vLLM + Streamlit + nginx image
 ├── requirements.txt        # Python dependencies
-├── g4-instance-setup.md    # AWS EC2 g4dn.xlarge provisioning guide
+├── g4-instance-setup.md    # AWS EC2 g4dn.xlarge provisioning guide (manual/console)
+├── terraform/              # Terraform for EC2 provisioning (instance + security group)
 └── README.md
 ```
 
@@ -55,17 +56,28 @@ llm-deployment-demo/
 
 ## Quick Start
 
-### Step 1 — Launch a g4dn.xlarge Instance on AWS
+### Step 1 — Provision the EC2 Instance with Terraform
 
-Provision an EC2 GPU instance with the right AMI, security group, and storage. Full steps here:
+```bash
+cd terraform
+cp terraform.tfvars.example terraform.tfvars   # set your key_name and ssh_cidr
+terraform init
+terraform apply
+```
 
-**[g4-instance-setup.md](./g4-instance-setup.md)**
+This provisions a `g4dn.xlarge` on AWS's Deep Learning Base GPU AMI (Ubuntu 22.04) — driver, Docker, and NVIDIA Container Toolkit are already baked in, no manual driver install/reboot needed. Outputs the instance's public IP and an SSH command.
+
+Prefer the AWS Console instead? Manual steps are in **[g4-instance-setup.md](./g4-instance-setup.md)**.
 
 ---
 
 ### Step 2 — SSH into the Instance
 
-Once the instance is running, copy the Public IPv4 address from the AWS Console and connect:
+Once the instance is running, grab the IP from Terraform's output (or the AWS Console) and connect:
+
+```bash
+terraform output public_ip
+```
 
 ```bash
 ssh -i your-key.pem ubuntu@<ec2-public-ip>
