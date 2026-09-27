@@ -6,3 +6,7 @@ streamlit==1.58.0
 requests==2.34.2
 pyairports==0.0.1
 xformers==0.0.27.post2
+fastapi==0.115.0
+uvicorn==0.30.6
+pyjwt==2.9.0
+python-multipart==0.0.9

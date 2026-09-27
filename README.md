@@ -22,12 +22,14 @@ Run a private, self-hosted LLM chat interface on your own GPU — no API keys, n
 
 ```
 Browser
-  └── Port 80  →  Streamlit UI (app.py)
-                      └── Port 8000  →  vLLM OpenAI-compatible API
-                                            └── NVIDIA GPU (Tesla T4 / local)
+  └── Port 80  →  nginx (auth gateway)
+                      ├── /login, /logout  →  FastAPI auth service (JWT cookie)
+                      └── /  (auth_request check)  →  Streamlit UI (app.py, internal :8501)
+                                                            └── vLLM API (internal :8000)
+                                                                    └── NVIDIA GPU (Tesla T4 / local)
 ```
 
-Both services run inside a **single Docker container**. The entrypoint script starts vLLM first, polls `/health` until the model is loaded, then launches Streamlit.
+All services run inside a **single Docker container**; only port 80 is exposed externally. The entrypoint script starts vLLM first, polls `/health` until the model is loaded, then starts the FastAPI auth service, Streamlit, and finally nginx — which gates every request behind a valid JWT session cookie before proxying to Streamlit.
 
 ---
 
@@ -40,8 +42,10 @@ Both services run inside a **single Docker container**. The entrypoint script st
 ```
 llm-deployment-demo/
 ├── app.py                  # Streamlit chat frontend
-├── entrypoint.sh           # Starts vLLM then Streamlit
-├── Dockerfile              # CUDA + PyTorch + vLLM + Streamlit image
+├── auth_app.py             # FastAPI login/JWT verification service
+├── nginx.conf              # Auth-gated reverse proxy (port 80)
+├── entrypoint.sh           # Starts vLLM, auth service, Streamlit, then nginx
+├── Dockerfile              # CUDA + PyTorch + vLLM + Streamlit + nginx image
 ├── requirements.txt        # Python dependencies
 ├── g4-instance-setup.md    # AWS EC2 g4dn.xlarge provisioning guide
 └── README.md
@@ -93,8 +97,10 @@ docker build -t vllm-nexus .
 ```bash
 docker run --gpus all \
     -p 80:80 \
-    -p 8000:8000 \
     -e MODEL_ID=Qwen/Qwen2-1.5B-Instruct \
+    -e JWT_SECRET=$(openssl rand -hex 32) \
+    -e AUTH_USER=admin \
+    -e AUTH_PASSWORD=change-me \
     -v ~/.cache/huggingface:/root/.cache/huggingface \
     vllm-nexus
 ```
@@ -104,15 +110,20 @@ docker run --gpus all \
 ```bash
 docker run -d --gpus all \
     -p 80:80 \
-    -p 8000:8000 \
     -e MODEL_ID=Qwen/Qwen2-1.5B-Instruct \
+    -e JWT_SECRET=$(openssl rand -hex 32) \
+    -e AUTH_USER=admin \
+    -e AUTH_PASSWORD=change-me \
     -v ~/.cache/huggingface:/root/.cache/huggingface \
+    --restart unless-stopped \
     --name vllm-nexus \
     vllm-nexus
 
 docker logs -f vllm-nexus                        # watch logs
 docker stop vllm-nexus && docker rm vllm-nexus   # stop and clean up
 ```
+
+> Only port 80 is exposed. vLLM's API (:8000) and Streamlit (:8501) are internal-only, reached exclusively through the nginx auth gateway.
 
 ---
 
@@ -122,7 +133,7 @@ docker stop vllm-nexus && docker rm vllm-nexus   # stop and clean up
 http://<your-ec2-public-ip>
 ```
 
-The UI shows **SERVER OFFLINE** for 1–3 minutes while the model loads — hit **REFRESH** in the sidebar once ready.
+You'll land on a login page — sign in with `AUTH_USER` / `AUTH_PASSWORD`. After login, the UI shows **SERVER OFFLINE** for 1–3 minutes while the model loads — hit **REFRESH** in the sidebar once ready.
 
 ---
 
@@ -153,6 +164,9 @@ Switch models by changing `MODEL_ID`:
 | `GPU_UTIL` | `0.85` | Fraction of GPU VRAM to use (0.0–1.0) |
 | `MAX_MODEL_LEN` | `2048` | Maximum context length in tokens |
 | `VLLM_HOST` | `http://localhost:8000` | vLLM server URL (used by Streamlit) |
+| `JWT_SECRET` | *(required)* | Signing secret for session JWTs — generate with `openssl rand -hex 32` |
+| `AUTH_USER` | `admin` | Login username |
+| `AUTH_PASSWORD` | `changeme` | Login password — set a real value in production |
 
 ---
 
@@ -169,6 +183,12 @@ Use a model with `instruct` or `chat` in the name.
 
 **UI shows SERVER OFFLINE after startup**
 Wait 2–3 minutes for the model to load, then click **REFRESH** in the sidebar.
+
+**Container exits immediately with `JWT_SECRET must be set`**
+Pass `-e JWT_SECRET=$(openssl rand -hex 32)` on `docker run` — it's required, no default.
+
+**Stuck redirecting to `/login` even with correct credentials**
+Cookies are `httponly`/`samesite=lax` over plain HTTP — this is fine for `http://<ip>` access but browsers may block them behind an HTTPS-terminating proxy sending mixed content. Access the UI directly over `http://`, or add TLS termination in front of nginx.
 
 ---
 
