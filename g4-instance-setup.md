@@ -32,7 +32,8 @@ Steps to launch and configure a GPU instance on AWS. Once the instance is ready,
    |---|---|---|
    | SSH | 22 | My IP |
    | Custom TCP | 80 | 0.0.0.0/0 |
-   | Custom TCP | 8000 | 0.0.0.0/0 |
+
+   Port 8000 (vLLM's raw API) does **not** need a public rule — it's only reached internally, behind the auth gateway on port 80.
 
 7. **Configure storage:** Set root volume to **100 GB gp3**
    - Models range from 2–15 GB and Docker images add up — 100 GB gives comfortable headroom
